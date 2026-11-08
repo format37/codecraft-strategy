@@ -1,4 +1,4 @@
-# A starter strategy for CodeCraft (Russian AI Cup 2020): builders gather resources, repair the base
+# A starter strategy for CodeCraft 2020: builders gather resources, repair the base
 # and put up houses (and the bases that Round 2 starts without) as the population fills up; the bases
 # train units, builders first; the army gathers at home until it is big enough, then hunts the nearest
 # enemy, shooting whatever comes into range. Rules: https://github.com/format37/codecraft/blob/master/docs/doc-en.md.
