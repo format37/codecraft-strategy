@@ -53,12 +53,21 @@ with a token from [codecraft.day/agents](https://codecraft.day/agents).
 ## Make it yours
 
 Fork, change the strategy file of your language, push, submit the fork's URL. The rules of the game and the
-whole entity model are on [codecraft.day/rules](https://codecraft.day/rules); they and the local runner (where
-you watch your strategy play against QuickStart on your own machine, in the browser) are in the
-[server repository](https://github.com/format37/codecraft): `docs/doc-en.md`, `sim-cpp/`. To run locally, build
-and start the runner (`make -C sim-cpp`, then `sim-cpp/build/codecraft-sim-cpp`), pick a TCP seat on port 31001
-and start your strategy with `127.0.0.1 31001` as its arguments (each client's runner takes `host port`, and an
-optional token).
+whole entity model are on [codecraft.day/rules](https://codecraft.day/rules). To watch it play on your own machine,
+use the local runner: the server's engine with the game live in the browser and the debug interface your strategy
+draws and logs through. The guide with the commands of every language is
+[codecraft.day/quickstart](https://codecraft.day/quickstart); in short, in this folder:
+
+```bash
+docker run --rm -it -p 31000:31000 -p 31001-31004:31001-31004 -v "$PWD":/game ghcr.io/format37/codecraft-runner
+# or, without Docker (also linux-arm64 and macos):
+curl -L https://github.com/format37/codecraft/releases/latest/download/codecraft-runner-linux-x86_64.tar.gz | tar xz && ./codecraft-runner
+```
+
+Then start your strategy: each client's runner takes `host port` (and an optional token) and connects to
+`127.0.0.1 31001` by default; in Python that is `python3 main.py`. Like the server, the runner cuts off a strategy
+that takes more than 1 s to answer a tick, or 40 s in all; `--limits warn` (or the viewer's side panel) makes it
+wait for a breakpoint instead and only mark the ticks the server would not allow.
 
 Only the strategy file is yours to edit: the rest of each folder is the client, and the server builds every
 folder exactly like the 2020 contest did (`compile.sh` of the official client, then `run.sh`).
