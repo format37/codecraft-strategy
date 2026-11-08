@@ -64,10 +64,19 @@ docker run --rm -it -p 31000:31000 -p 31001-31004:31001-31004 -v "$PWD":/game gh
 curl -L https://github.com/format37/codecraft/releases/latest/download/codecraft-runner-linux-x86_64.tar.gz | tar xz && ./codecraft-runner
 ```
 
+On Windows 10 or 11, in PowerShell or cmd (the exe is not signed: SmartScreen may ask once, More info, then Run
+anyway):
+
+```powershell
+curl.exe -L -o runner.zip https://github.com/format37/codecraft/releases/latest/download/codecraft-runner-windows-x86_64.zip
+tar xf runner.zip
+.\codecraft-runner.exe
+```
+
 Then start your strategy: each client's runner takes `host port` (and an optional token) and connects to
-`127.0.0.1 31001` by default; in Python that is `python3 main.py`. Like the server, the runner cuts off a strategy
-that takes more than 1 s to answer a tick, or 40 s in all; `--limits warn` (or the viewer's side panel) makes it
-wait for a breakpoint instead and only mark the ticks the server would not allow.
+`127.0.0.1 31001` by default; in Python that is `python3 main.py` (`python main.py` on Windows). Like the server,
+the runner cuts off a strategy that takes more than 1 s to answer a tick, or 40 s in all; `--limits warn` (or the
+viewer's side panel) makes it wait for a breakpoint instead and only mark the ticks the server would not allow.
 
 Only the strategy file is yours to edit: the rest of each folder is the client, and the server builds every
 folder exactly like the 2020 contest did (`compile.sh` of the official client, then `run.sh`).
