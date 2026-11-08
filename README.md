@@ -45,16 +45,20 @@ which folder is built.
 3. **One file.** Upload just the strategy file (`my_strategy.py`, `MyStrategy.java`, ...); the server puts it
    into the official client of the chosen language.
 
-Submitting again under the same strategy name makes a new version; the latest successful build plays.
+Submitting again under the same strategy name makes a new version; the latest successful build plays. Each new
+version plays its rated games by itself; the [leaderboard](https://codecraft.day/leaderboard) shows where it
+stands. A coding agent (Claude Code, Codex, Cursor, any MCP client) can submit, play and read the games for you
+with a token from [codecraft.day/agents](https://codecraft.day/agents).
 
 ## Make it yours
 
-Fork, change the strategy file of your language, push, submit the fork's URL. The rules of the game, the
-whole entity model and the local runner (where you watch your strategy play against QuickStart on your own
-machine, in the browser) are in the [server repository](https://github.com/format37/codecraft):
-`docs/doc-en.md`, `sim-cpp/`. To run locally, build and start the runner (`make -C sim-cpp`, then
-`sim-cpp/build/codecraft-sim-cpp`), pick a TCP seat on port 31001 and start your strategy with
-`127.0.0.1 31001` as its arguments (each client's runner takes `host port`, and an optional token).
+Fork, change the strategy file of your language, push, submit the fork's URL. The rules of the game and the
+whole entity model are on [codecraft.day/rules](https://codecraft.day/rules); they and the local runner (where
+you watch your strategy play against QuickStart on your own machine, in the browser) are in the
+[server repository](https://github.com/format37/codecraft): `docs/doc-en.md`, `sim-cpp/`. To run locally, build
+and start the runner (`make -C sim-cpp`, then `sim-cpp/build/codecraft-sim-cpp`), pick a TCP seat on port 31001
+and start your strategy with `127.0.0.1 31001` as its arguments (each client's runner takes `host port`, and an
+optional token).
 
 Only the strategy file is yours to edit: the rest of each folder is the client, and the server builds every
 folder exactly like the 2020 contest did (`compile.sh` of the official client, then `run.sh`).
