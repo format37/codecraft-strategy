@@ -1,7 +1,7 @@
 # CodeCraft starter
 
 A ready-to-submit strategy for **CodeCraft**, the bot-programming game of 2020, in every language the
-[CodeCraft](https://codecraft.latentstate.dev) server accepts. Clone it, pick your language, make it yours.
+[CodeCraft](https://codecraft.day) server accepts. Clone it, pick your language, make it yours.
 
 Each folder is the official 2020 client for that language (the game model, the protocol, the runner)
 with the same starter strategy dropped in. The strategy is about a hundred lines and does the same thing
@@ -34,7 +34,7 @@ are the first things to play with; the branches of the main loop are the second.
 
 ## Submit it
 
-On [codecraft.latentstate.dev/submit](https://codecraft.latentstate.dev/submit) you name your strategy,
+On [codecraft.day/submit](https://codecraft.day/submit) you name your strategy,
 **choose the language** and give the source in one of three ways. The language you choose is what decides
 which folder is built.
 
