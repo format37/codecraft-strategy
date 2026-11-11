@@ -52,6 +52,32 @@ class MyStrategy:
                     return Vec2Int(x,y)
         return Vec2Int(0,0)
 
+    def builders_mine_strategy(self, grid, builders):
+        targets = dict()
+        size = grid.shape[0]
+        for tri in range(1-size,size,1):
+            # k = -tri is diagonal bias
+            suggestion = np.triu(np.ones((size, size)), k=-tri)
+            # mirror
+            suggestion = np.fliplr(suggestion)
+            builder_grid = grid * suggestion
+            # Counting EntityType.RESOURCE:8
+            resources = np.where(builder_grid==8)
+            if len(resources[0]):
+                break
+        if len(resources[0])==0:
+            return targets
+        r = 0
+        for b in builders:
+            targets[b.id] = Vec2Int(resources[0][r], resources[1][r])
+            # Next builder, next resource
+            r += 1
+            if r>=len(resources):
+                r = 0
+                
+        return targets
+
+
     def get_action(self, player_view, debug_interface):
         self.debug = debug_interface  # None on the server and in batch mode: there is no viewer to draw in
         me = player_view.my_id
@@ -120,7 +146,8 @@ class MyStrategy:
                         and house.health == house_props.max_health \
                         and ranged_base is None \
                         and resources >= ranged_props.initial_cost:
-                self.build_order.pop('house')
+                if 'house' in self.build_order.keys():
+                    self.build_order.pop('house')
                 build = BuildAction(EntityType.RANGED_BASE, ranged_spot)
                 move_spot = Vec2Int(ranged_spot.x,ranged_spot.y)
                 result.entity_actions[builder.id] = EntityAction(
@@ -131,8 +158,14 @@ class MyStrategy:
                     MoveAction(ranged_base.position, True, False), None, None, RepairAction(ranged_base.id))
             # Thoughtless mining: step right. A move into an adjacent cell with a resource mines it.
             else:
-                step = Vec2Int(builder.position.x + 1, builder.position.y)
+                targets = self.builders_mine_strategy(grid, builders)
+                # step = Vec2Int(builder.position.x + 1, builder.position.y)
+                if len(targets) and builder.id in targets.keys():
+                    step = targets[builder.id]
+                else:
+                    step = enemy_bases[0]
                 result.entity_actions[builder.id] = EntityAction(MoveAction(step, True, False), None, None, None)
+                self.log(f'no targets for builder {builder.id}')
 
         return result
 
