@@ -53,18 +53,76 @@ class MyStrategy:
         return Vec2Int(0,0)
 
     def builders_mine_strategy(self, grid, builders):
+        # 1. Crop top corner
+        # 2. If resources in top corner - find nearest
+        # 3. If no resources - proceed with shifting the diagonal border
+        
         targets = dict()
         size = grid.shape[0]
-        for tri in range(1-size,size,1):
-            # k = -tri is diagonal bias
-            suggestion = np.triu(np.ones((size, size)), k=-tri)
-            # mirror
-            suggestion = np.fliplr(suggestion)
-            builder_grid = grid * suggestion
-            # Counting EntityType.RESOURCE:8
-            resources = np.where(builder_grid==8)
-            if len(resources[0]):
-                break
+
+        # Crop the top corner
+        tri = 15
+        suggestion = np.triu(np.ones((size, size)), k=size-tri)
+        # mirror
+        suggestion = np.fliplr(suggestion)
+        available_grid = grid * suggestion
+        # Counting EntityType.RESOURCE:8
+        # resources = np.where(available_grid==8)
+        mask = available_grid == 8      # bool array, same shape as the grid
+        only_res = available_grid * mask  # zeros everywhere except the 8s
+        if only_res.sum()>0:
+            # find nearest
+            # Resource coordinates as an (R, 2) array
+            res = np.argwhere(available_grid == 8)   # shape (R, 2)
+            for b in builders:
+                # Builder positions as a (B, 2) array
+                # bpos = np.array([b.position for b in builders])   # shape (B, 2)
+                bpos = np.array([(b.position.x, b.position.y) for b in builders])   # shape (B, 2), int
+                # Broadcasting does the rest
+                dist = np.abs(bpos[:, None, :] - res[None, :, :]).sum(axis=-1)   # shape (B, R)
+                idx = dist.argmin(axis=1)   # shape (B,): nearest resource index for each builder
+                target = res[idx]          # shape (B, 2): coordinates of that resource
+                targets[b.id] = Vec2Int(target[0][0], target[0][1])
+                pass
+        if len(targets):
+            return targets
+            # r = 0
+            # for b in builders:
+            #     pos_x = b.position[0]
+            #     pos_y = b.position[1]
+            #     targets[b.id] = Vec2Int(resources[0][r], resources[1][r])
+            #     # Next builder, next resource
+            #     r += 1
+            #     if r>=len(resources):
+            #         r = 0
+            
+
+        # # Start from the middle of the base
+        # for tri in range(15,1,-1):
+        #     # k = -tri is diagonal bias
+        #     # suggestion = np.triu(np.ones((size, size)), k=-tri)
+        #     suggestion = np.triu(np.ones((size, size)), k=size-tri)
+        #     # mirror
+        #     suggestion = np.fliplr(suggestion)
+        #     builder_grid = grid * suggestion
+        #     # Counting EntityType.RESOURCE:8
+        #     resources = np.where(builder_grid==8)
+        #     if len(resources[0]):
+        #         break
+
+        if len(resources[0])==0:
+            # Proceed from the grid tip
+            for tri in range(1-size,size,1):
+                # k = -tri is diagonal bias
+                suggestion = np.triu(np.ones((size, size)), k=-tri)
+                # mirror
+                suggestion = np.fliplr(suggestion)
+                builder_grid = grid * suggestion
+                # Counting EntityType.RESOURCE:8
+                resources = np.where(builder_grid==8)
+                if len(resources[0]):
+                    break
+
         if len(resources[0])==0:
             return targets
         r = 0
