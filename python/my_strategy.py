@@ -74,79 +74,66 @@ class MyStrategy:
             # find nearest
             # Resource coordinates as an (R, 2) array
             res = np.argwhere(available_grid == 8)   # shape (R, 2)
+            b_num = 0
             for b in builders:
                 # Builder positions as a (B, 2) array
-                # bpos = np.array([b.position for b in builders])   # shape (B, 2)
                 bpos = np.array([(b.position.x, b.position.y) for b in builders])   # shape (B, 2), int
                 # Broadcasting does the rest
                 dist = np.abs(bpos[:, None, :] - res[None, :, :]).sum(axis=-1)   # shape (B, R)
                 idx = dist.argmin(axis=1)   # shape (B,): nearest resource index for each builder
                 target = res[idx]          # shape (B, 2): coordinates of that resource
-                targets[b.id] = Vec2Int(target[0][0], target[0][1])
-                pass
+                targets[b.id] = Vec2Int(target[b_num][0], target[b_num][1])
+                b_num += 1
         if len(targets):
             return targets
-            # r = 0
-            # for b in builders:
-            #     pos_x = b.position[0]
-            #     pos_y = b.position[1]
-            #     targets[b.id] = Vec2Int(resources[0][r], resources[1][r])
-            #     # Next builder, next resource
-            #     r += 1
-            #     if r>=len(resources):
-            #         r = 0
-            
 
-        # # Start from the middle of the base
-        # for tri in range(15,1,-1):
-        #     # k = -tri is diagonal bias
-        #     # suggestion = np.triu(np.ones((size, size)), k=-tri)
-        #     suggestion = np.triu(np.ones((size, size)), k=size-tri)
-        #     # mirror
-        #     suggestion = np.fliplr(suggestion)
-        #     builder_grid = grid * suggestion
-        #     # Counting EntityType.RESOURCE:8
-        #     resources = np.where(builder_grid==8)
-        #     if len(resources[0]):
-        #         break
-
-        if len(resources[0])==0:
+        resources = []
+        if only_res.sum()==0:
             # Proceed from the grid tip
             for tri in range(1-size,size,1):
                 # k = -tri is diagonal bias
                 suggestion = np.triu(np.ones((size, size)), k=-tri)
                 # mirror
                 suggestion = np.fliplr(suggestion)
-                builder_grid = grid * suggestion
+                # builder_grid = grid * suggestion
                 # Counting EntityType.RESOURCE:8
-                resources = np.where(builder_grid==8)
-                if len(resources[0]):
+                # resources = np.where(builder_grid==8)
+                mask = available_grid == 8      # bool array, same shape as the grid
+                only_res = available_grid * mask  # zeros everywhere except the 8s
+                if only_res.sum():
                     break
 
-        if len(resources[0])==0:
+        if only_res.sum()>0:
             return targets
-        r = 0
+        # r = 0
+        # for b in builders:
+        #     targets[b.id] = Vec2Int(only_res[0], only_res[1])
+        #     # Next builder, next resource
+        #     r += 1
+        #     if r>=len(resources):
+        #         r = 0
+        # find nearest
+        # Resource coordinates as an (R, 2) array
+        res = np.argwhere(grid == 8)   # shape (R, 2)
+        b_num = 0
         for b in builders:
-            targets[b.id] = Vec2Int(resources[0][r], resources[1][r])
-            # Next builder, next resource
-            r += 1
-            if r>=len(resources):
-                r = 0
+            # Builder positions as a (B, 2) array
+            bpos = np.array([(b.position.x, b.position.y) for b in builders])   # shape (B, 2), int
+            # Broadcasting does the rest
+            dist = np.abs(bpos[:, None, :] - res[None, :, :]).sum(axis=-1)   # shape (B, R)
+            idx = dist.argmin(axis=1)   # shape (B,): nearest resource index for each builder
+            target = res[idx]          # shape (B, 2): coordinates of that resource
+            targets[b.id] = Vec2Int(target[b_num][0], target[b_num][1])
+            b_num += 1
                 
         return targets
 
-
-    def get_action(self, player_view, debug_interface):
-        self.debug = debug_interface  # None on the server and in batch mode: there is no viewer to draw in
-        me = player_view.my_id
-        house_props = player_view.entity_properties[EntityType.HOUSE]
-        resources = next(p.resource for p in player_view.players if p.id == me)
-        mine = [e for e in player_view.entities if e.player_id == me]
-        builders = [e for e in mine if e.entity_type == EntityType.BUILDER_UNIT]
-        base = next((e for e in mine if e.entity_type == EntityType.BUILDER_BASE), None)
+    def builder_action(self, result, me, mine, resources, builders, base, player_view):
         house = next((e for e in mine if e.entity_type == EntityType.HOUSE), None)
         ranged_base = next((e for e in mine if e.entity_type == EntityType.RANGED_BASE), None)
         ranged_props = player_view.entity_properties[EntityType.RANGED_BASE]
+        house_props = player_view.entity_properties[EntityType.HOUSE]
+        
 
         enemy_bases = [Vec2Int(
             player_view.map_size-9,
@@ -188,7 +175,6 @@ class MyStrategy:
         # Of the actions given to an entity, the first one possible this tick is done, in the order
         # attack, build, repair, move. So "build (or repair), else move" walks a builder to the house
         # and starts the job as soon as it is next to it.
-        result = Action({})
         for builder in builders:
             # Build home
             if house_spot is not None:
@@ -224,6 +210,35 @@ class MyStrategy:
                     step = enemy_bases[0]
                 result.entity_actions[builder.id] = EntityAction(MoveAction(step, True, False), None, None, None)
                 self.log(f'no targets for builder {builder.id}')
+
+    def produce_builders(self, resources, base, population_capacity, result, player_view):
+        builder_props = player_view.entity_properties[EntityType.BUILDER_UNIT]
+        if resources >= builder_props.initial_cost and population_capacity>0:
+            new_unit_spot = Vec2Int(base.position.x+4,base.position.y-1) # ToDo: Find empty
+            build = BuildAction(EntityType.BUILDER_UNIT, new_unit_spot)
+            result.entity_actions[base.id] = EntityAction(None, build, None, None)
+            self.draw_rectangle(new_unit_spot.x,new_unit_spot.y,new_unit_spot.x+1,new_unit_spot.y+1)
+
+    def get_action(self, player_view, debug_interface):
+        self.debug = debug_interface  # None on the server and in batch mode: there is no viewer to draw in
+        me = player_view.my_id
+        mine = [e for e in player_view.entities if e.player_id == me]
+        resources = next(p.resource for p in player_view.players if p.id == me)
+        builders = [e for e in mine if e.entity_type == EntityType.BUILDER_UNIT]
+        base = next((e for e in mine if e.entity_type == EntityType.BUILDER_BASE), None)
+
+        # population capacity
+        population_provide = 0
+        population_use = 0
+        for e in mine:
+            population_provide += player_view.entity_properties[e.entity_type].population_provide
+            population_use += player_view.entity_properties[e.entity_type].population_use
+        population_capacity = max(0, population_provide - population_use)
+
+        result = Action({})
+
+        self.builder_action(result, me, mine, resources, builders, base, player_view)
+        self.produce_builders(resources, base, population_capacity, result, player_view)
 
         return result
 
