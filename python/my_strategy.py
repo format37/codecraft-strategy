@@ -214,21 +214,42 @@ class MyStrategy:
                 result.entity_actions[builder.id] = EntityAction(MoveAction(step, True, False), None, None, None)
                 # self.log(f'no targets for builder {builder.id}')
 
-    def produce_builders(self, resources, base, population_capacity, result, player_view):
+    def produce_builders(self, resources, base, population_capacity, result, player_view, builders):
+        if base is None:
+            return
         builder_props = player_view.entity_properties[EntityType.BUILDER_UNIT]
-        if resources >= builder_props.initial_cost and population_capacity>3:
+        if resources >= builder_props.initial_cost + len(builders) and population_capacity>3:
             new_unit_spot = Vec2Int(base.position.x+4,base.position.y-1) # ToDo: Find empty
             build = BuildAction(EntityType.BUILDER_UNIT, new_unit_spot)
             result.entity_actions[base.id] = EntityAction(None, build, None, None)
             self.draw_rectangle(new_unit_spot.x,new_unit_spot.y,new_unit_spot.x+1,new_unit_spot.y+1)
+        else:
+            result.entity_actions[base.id] = EntityAction(None, None, None, None)
 
-    def produce_ranged(self, resources, base, population_capacity, result, player_view):
-            unit_props = player_view.entity_properties[EntityType.RANGED_UNIT]
-            if resources >= unit_props.initial_cost and population_capacity>0:
-                new_unit_spot = Vec2Int(base.position.x+4,base.position.y+5) # ToDo: Find empty
-                build = BuildAction(EntityType.RANGED_UNIT, new_unit_spot)
-                result.entity_actions[base.id] = EntityAction(None, build, None, None)
-                self.draw_rectangle(new_unit_spot.x,new_unit_spot.y,new_unit_spot.x+1,new_unit_spot.y+1)
+    def produce_ranged(self, resources, base, population_capacity, result, player_view, ranged_units):
+        count_ranged = 0 if ranged_units is None else len(ranged_units)
+        if base is None:
+            return
+        unit_props = player_view.entity_properties[EntityType.RANGED_UNIT]
+        if resources >= unit_props.initial_cost + count_ranged and population_capacity>0:
+            new_unit_spot = Vec2Int(base.position.x+4,base.position.y+5) # ToDo: Find empty
+            build = BuildAction(EntityType.RANGED_UNIT, new_unit_spot)
+            result.entity_actions[base.id] = EntityAction(None, build, None, None)
+            self.draw_rectangle(new_unit_spot.x,new_unit_spot.y,new_unit_spot.x+1,new_unit_spot.y+1)
+        else:
+            result.entity_actions[base.id] = EntityAction(None, None, None, None)
+
+    def ranged_action(self, result, ranged_units, player_view):
+        if len(ranged_units) == 0:
+            return
+        enemy_bases = [Vec2Int(
+            player_view.map_size-9,
+            player_view.map_size-9
+        )]
+        for unit in ranged_units:
+            attack = AttackAction(None, None)
+            move = MoveAction(enemy_bases[0], True, True)
+            result.entity_actions[unit.id] = EntityAction(move, None, attack, None)
 
     def get_action(self, player_view, debug_interface):
         self.debug = debug_interface  # None on the server and in batch mode: there is no viewer to draw in
@@ -238,6 +259,12 @@ class MyStrategy:
         builders = [e for e in mine if e.entity_type == EntityType.BUILDER_UNIT]
         base = next((e for e in mine if e.entity_type == EntityType.BUILDER_BASE), None)
         ranged_base = next((e for e in mine if e.entity_type == EntityType.RANGED_BASE), None)
+        
+        # ranged_units = next((e for e in mine if e.entity_type == EntityType.RANGED_UNIT), None)
+        ranged_units = []
+        for e in mine:
+            if e.entity_type == EntityType.RANGED_UNIT:
+                ranged_units.append(e)
 
         # population capacity
         population_provide = 0
@@ -250,8 +277,9 @@ class MyStrategy:
         result = Action({})
 
         self.builder_action(result, me, mine, resources, builders, base, player_view)
-        self.produce_builders(resources, base, population_capacity, result, player_view)
-        self.produce_ranged(resources, ranged_base, population_capacity, result, player_view)
+        self.produce_builders(resources, base, population_capacity, result, player_view, builders)
+        self.produce_ranged(resources, ranged_base, population_capacity, result, player_view, ranged_units)
+        self.ranged_action(result, ranged_units, player_view)
 
         return result
 
