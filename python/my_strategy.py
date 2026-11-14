@@ -33,21 +33,22 @@ class MyStrategy:
             EntityType.WALL:10
         }
         # ToDo: Account entity_properties[entity.entity_type].sight_range
-        grid = np.zeros((player_view.map_size, player_view.map_size), dtype=np.int8)
+        layers = 3 # owner, sight_range
+        grid = np.zeros((layers, player_view.map_size, player_view.map_size), dtype=np.int8)
         for entity in (player_view.entities):
             # entity.position.x, entity.position.y, entity_map[entity.entity_type]
             props = player_view.entity_properties[entity.entity_type]
             for x in range(props.size):
                 for y in range(props.size):
-                    grid[entity.position.x+x, entity.position.y+y] = entity_map[entity.entity_type]
+                    grid[0, entity.position.x+x, entity.position.y+y] = entity_map[entity.entity_type]
         return grid
 
     def place_finder(self, grid, size):
         start_point = [0,0] # ToDo: depends on current pos, don't account moving units
-        side = grid.shape[0]
+        side = grid[0].shape[0]
         for x in range(side-size+1):
             for y in range(side-size+1):
-                snippet = grid[x:x + size, y:y + size]
+                snippet = grid[0, x:x + size, y:y + size]
                 if np.sum(snippet)==0:
                     return Vec2Int(x,y)
         return Vec2Int(0,0)
@@ -58,14 +59,14 @@ class MyStrategy:
         # 3. If no resources - proceed with shifting the diagonal border
         
         targets = dict()
-        size = grid.shape[0]
+        size = grid[0].shape[0]
 
         # Crop the top corner
         tri = 15
         suggestion = np.triu(np.ones((size, size)), k=size-tri)
         # mirror
         suggestion = np.fliplr(suggestion)
-        available_grid = grid * suggestion
+        available_grid = grid[0] * suggestion
         # Counting EntityType.RESOURCE:8
         # resources = np.where(available_grid==8)
         mask = available_grid == 8      # bool array, same shape as the grid
@@ -107,7 +108,7 @@ class MyStrategy:
         #     return targets
         # find nearest
         # Resource coordinates as an (R, 2) array
-        res = np.argwhere(grid == 8)   # shape (R, 2)
+        res = np.argwhere(grid[0] == 8)   # shape (R, 2)
         if len(res):
             b_num = 0
             for b in builders:
