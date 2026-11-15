@@ -4,6 +4,8 @@ import numpy as np
 class MyStrategy:
     # One MyStrategy plays the whole game: anything you keep on self survives from tick to tick.
     build_order = dict()
+    house_mask = None
+    ranged_mask = None
 
     def log(self, text):
         if self.debug:
@@ -19,7 +21,7 @@ class MyStrategy:
                 vertices.append(ColoredVertex(Vec2Float(x, y), Vec2Float(0, 0), color))
         self.debug.send(DebugCommand.Add(DebugData.Primitives(vertices, PrimitiveType.LINES)))
 
-    def numpymap(self, player_view):
+    def vectorized_map(self, player_view):
         entity_map = {
             EntityType.BUILDER_BASE:1,
             EntityType.BUILDER_UNIT:2,
@@ -33,7 +35,7 @@ class MyStrategy:
             EntityType.WALL:10
         }
         # ToDo: Account entity_properties[entity.entity_type].sight_range
-        layers = 3 # owner, sight_range
+        layers = 3 # entity type, owner, sight_range
         grid = np.zeros((layers, player_view.map_size, player_view.map_size), dtype=np.int8)
         for entity in (player_view.entities):
             # entity.position.x, entity.position.y, entity_map[entity.entity_type]
@@ -41,17 +43,38 @@ class MyStrategy:
             for x in range(props.size):
                 for y in range(props.size):
                     grid[0, entity.position.x+x, entity.position.y+y] = entity_map[entity.entity_type]
+                    grid[1, entity.position.x+x, entity.position.y+y] = 0 if entity.entity_type==EntityType.RESOURCE else entity_map[entity.player_id]
+                    grid[2, entity.position.x+x, entity.position.y+y] = player_view.entity_properties[entity.entity_type].sight_range
         return grid
 
-    def place_finder(self, grid, size):
-        start_point = [0,0] # ToDo: depends on current pos, don't account moving units
-        side = grid[0].shape[0]
-        for x in range(side-size+1):
-            for y in range(side-size+1):
-                snippet = grid[0, x:x + size, y:y + size]
-                if np.sum(snippet)==0:
-                    return Vec2Int(x,y)
-        return Vec2Int(0,0)
+    def init_placement(self, player_view):
+        if self.house_mask is None:
+            unit_size = player_view.entity_properties[EntityType.HOUSE].size
+            self.house_mask = np.zeros([player_view.map_size, player_view.map_size], dtype=np.int8)            
+            self.house_mask[unit_size:,unit_size:] = 1
+            # self.house_mask[:, unit_size:] = 1
+        if self.ranged_mask is None:
+            unit_size = player_view.entity_properties[EntityType.RANGED_BASE].size
+            self.ranged_mask = np.zeros([player_view.map_size, player_view.map_size], dtype=np.int8)            
+            self.ranged_mask[:unit_size,:unit_size] = 1 # left bottom
+            self.ranged_mask[unit_size:unit_size*3, unit_size:unit_size*3] = 1 # around the base
+            # Invert
+            self.ranged_mask = self.ranged_mask^1
+            pass
+
+    def place_finder(self, grid, size, entity_type):
+            available_grid = np.array(grid[0])
+            if entity_type == EntityType.HOUSE:
+                available_grid += self.house_mask
+            elif entity_type == EntityType.RANGED_BASE:
+                available_grid += self.ranged_mask
+            side = available_grid.shape[0]
+            for x in range(side-size+1):
+                for y in range(side-size+1):
+                    snippet = available_grid[x:x + size, y:y + size]
+                    if np.sum(snippet)==0:
+                        return Vec2Int(x,y)
+            return None
 
     def builders_mine_strategy(self, grid, builders):
         # 1. Crop top corner
@@ -132,7 +155,36 @@ class MyStrategy:
                     aim_y += step                
         return targets
 
-    def builder_action(self, result, me, mine, resources, builders, base, player_view):
+    def free_spots_around(self, spot, unit_size, grid):
+        spots = []
+        map_size = grid[0].shape[0]
+        for i in range(0,unit_size):            
+            # left
+            x = spot.x-1
+            y = spot.y+i
+            if x>=0 and y>=0 and x<map_size and y<map_size and grid[0][x][y] == 0:
+                spots.append(Vec2Int(x,y))
+            # right
+            x = spot.x+unit_size
+            y = spot.y+i
+            if x>=0 and y>=0 and x<map_size and y<map_size and grid[0][x][y] == 0:
+                spots.append(Vec2Int(x,y))
+            # top
+            x = spot.x+i
+            y = spot.y+unit_size
+            if x>=0 and y>=0 and x<map_size and y<map_size and grid[0][x][y] == 0:
+                spots.append(Vec2Int(x,y))
+            # bottom
+            x = spot.x+i
+            y = spot.y-1
+            if x>=0 and y>=0 and x<map_size and y<map_size and grid[0][x][y] == 0:
+                spots.append(Vec2Int(x,y))
+        # Debug
+        # for s in spots:
+        #     self.draw_rectangle(s.x,s.y,s.x+1,s.y+1) 
+        return spots
+
+    def builder_action(self, result, me, mine, resources, builders, base, player_view, grid):
         house = next((e for e in mine if e.entity_type == EntityType.HOUSE), None)
         ranged_base = next((e for e in mine if e.entity_type == EntityType.RANGED_BASE), None)
         ranged_props = player_view.entity_properties[EntityType.RANGED_BASE]
@@ -143,8 +195,6 @@ class MyStrategy:
             player_view.map_size-9,
             player_view.map_size-9
         )]
-
-        grid = self.numpymap(player_view)
 
         count = {}
         for e in mine:
@@ -158,52 +208,87 @@ class MyStrategy:
         house_spot = None
         if house is None and base is not None and resources >= house_props.initial_cost:
             if 'house' not in self.build_order.keys():
-                house_spot = self.place_finder(grid, house_props.size)
+                house_spot = self.place_finder(grid, house_props.size, EntityType.HOUSE)
                 self.build_order['house'] = house_spot
             else:
                 house_spot = self.build_order['house']
-            self.draw_rectangle(house_spot.x, house_spot.y,
-                                house_spot.x + house_props.size, house_spot.y + house_props.size)
+            if house_spot is not None:
+                self.draw_rectangle(house_spot.x, house_spot.y,
+                    house_spot.x + house_props.size, house_spot.y + house_props.size)
 
         # One ranged factory
         if house is not None \
             and house.health == house_props.max_health \
             and ranged_base is None:
             if 'ranged_base' not in self.build_order.keys():
-                ranged_spot = self.place_finder(grid, ranged_props.size)
+                ranged_spot = self.place_finder(grid, ranged_props.size, EntityType.RANGED_BASE)
             else:
                 ranged_spot = self.build_order['ranged_base']
-            self.draw_rectangle(ranged_spot.x, ranged_spot.y,
-                                            ranged_spot.x + ranged_props.size, ranged_spot.y + ranged_props.size)
+            if ranged_spot is not None:
+                self.draw_rectangle(ranged_spot.x, ranged_spot.y,
+                    ranged_spot.x + ranged_props.size, ranged_spot.y + ranged_props.size)
 
         # Of the actions given to an entity, the first one possible this tick is done, in the order
         # attack, build, repair, move. So "build (or repair), else move" walks a builder to the house
         # and starts the job as soon as it is next to it.
+        if house_spot is not None:
+            spots_around = self.free_spots_around(house_spot, house_props.size, grid)
+            current_spot = 0
+        elif house is not None and house.health < house_props.max_health:
+            spots_around = self.free_spots_around(house.position, house_props.size, grid)
+            current_spot = 0
+        elif house is not None \
+            and house.health == house_props.max_health \
+            and ranged_base is None \
+            and resources >= ranged_props.initial_cost \
+            and ranged_spot is not None:
+            spots_around = self.free_spots_around(ranged_spot, ranged_props.size, grid)
+            current_spot = 0
+        elif ranged_base is not None and ranged_base.health < ranged_props.max_health:
+            spots_around = self.free_spots_around(ranged_base.position, ranged_props.size, grid)
+            current_spot = 0
+
         for builder in builders:
             # Build home
-            if house_spot is not None:
+            if house_spot is not None and len(spots_around):
                 build = BuildAction(EntityType.HOUSE, house_spot)
+                move_spot = spots_around[current_spot]
                 result.entity_actions[builder.id] = EntityAction(
-                    MoveAction(house_spot, True, False), build, None, None)
+                    MoveAction(move_spot, True, False), build, None, None)
+                current_spot += 1
+                if current_spot>len(spots_around)-1:
+                    current_spot = 0
             # Repair home
-            elif house is not None and house.health < house_props.max_health:
+            elif house is not None and house.health < house_props.max_health and len(spots_around):
+                move_spot = spots_around[current_spot]
                 result.entity_actions[builder.id] = EntityAction(
-                    MoveAction(house.position, True, False), None, None, RepairAction(house.id))
+                    MoveAction(move_spot, True, False), None, None, RepairAction(house.id))
+                current_spot += 1
+                if current_spot>len(spots_around)-1:
+                    current_spot = 0
             # Build ranged base
             elif house is not None \
                         and house.health == house_props.max_health \
                         and ranged_base is None \
-                        and resources >= ranged_props.initial_cost:
+                        and resources >= ranged_props.initial_cost \
+                        and ranged_spot is not None:
                 if 'house' in self.build_order.keys():
                     self.build_order.pop('house')
                 build = BuildAction(EntityType.RANGED_BASE, ranged_spot)
-                move_spot = Vec2Int(ranged_spot.x,ranged_spot.y)
+                move_spot = spots_around[current_spot]
                 result.entity_actions[builder.id] = EntityAction(
                     MoveAction(move_spot, True, False), build, None, None)
+                current_spot += 1
+                if current_spot>len(spots_around)-1:
+                    current_spot = 0
             # Repair ranged base
-            elif ranged_base is not None and ranged_base.health < ranged_props.max_health:
+            elif ranged_base is not None and ranged_base.health < ranged_props.max_health and len(spots_around):
+                move_spot = spots_around[current_spot]
                 result.entity_actions[builder.id] = EntityAction(
-                    MoveAction(ranged_base.position, True, False), None, None, RepairAction(ranged_base.id))
+                    MoveAction(move_spot, True, False), None, None, RepairAction(ranged_base.id))
+                current_spot += 1
+                if current_spot>len(spots_around)-1:
+                    current_spot = 0
             # Thoughtless mining: step right. A move into an adjacent cell with a resource mines it.
             else:
                 targets = self.builders_mine_strategy(grid, builders)
@@ -227,13 +312,18 @@ class MyStrategy:
         else:
             result.entity_actions[base.id] = EntityAction(None, None, None, None)
 
-    def produce_ranged(self, resources, base, population_capacity, result, player_view, ranged_units):
+    def produce_ranged(self, resources, base, population_capacity, result, player_view, ranged_units, grid):
         count_ranged = 0 if ranged_units is None else len(ranged_units)
         if base is None:
             return
         unit_props = player_view.entity_properties[EntityType.RANGED_UNIT]
         if resources >= unit_props.initial_cost + count_ranged and population_capacity>0:
-            new_unit_spot = Vec2Int(base.position.x+4,base.position.y+5) # ToDo: Find empty
+            # new_unit_spot = Vec2Int(base.position.x+4,base.position.y+5) # ToDo: Find empty
+            new_unit_spot = self.free_spots_around(base.position, unit_props.size, grid)
+            if len(new_unit_spot):
+                new_unit_spot = new_unit_spot[-1]
+            else:
+                return
             build = BuildAction(EntityType.RANGED_UNIT, new_unit_spot)
             result.entity_actions[base.id] = EntityAction(None, build, None, None)
             self.draw_rectangle(new_unit_spot.x,new_unit_spot.y,new_unit_spot.x+1,new_unit_spot.y+1)
@@ -253,6 +343,7 @@ class MyStrategy:
             result.entity_actions[unit.id] = EntityAction(move, None, attack, None)
 
     def get_action(self, player_view, debug_interface):
+        self.init_placement(player_view)
         self.debug = debug_interface  # None on the server and in batch mode: there is no viewer to draw in
         me = player_view.my_id
         mine = [e for e in player_view.entities if e.player_id == me]
@@ -277,9 +368,11 @@ class MyStrategy:
 
         result = Action({})
 
-        self.builder_action(result, me, mine, resources, builders, base, player_view)
+        grid = self.vectorized_map(player_view)
+
+        self.builder_action(result, me, mine, resources, builders, base, player_view, grid)
         self.produce_builders(resources, base, population_capacity, result, player_view, builders)
-        self.produce_ranged(resources, ranged_base, population_capacity, result, player_view, ranged_units)
+        self.produce_ranged(resources, ranged_base, population_capacity, result, player_view, ranged_units, grid)
         self.ranged_action(result, ranged_units, player_view)
 
         return result
