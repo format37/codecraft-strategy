@@ -82,6 +82,9 @@ class MyStrategy:
         # 3. If no resources - proceed with shifting the diagonal border
         
         targets = dict()
+        if len(builders)==0:
+            return targets
+        
         size = grid[0].shape[0]
 
         # Crop the top corner
@@ -111,25 +114,7 @@ class MyStrategy:
         if len(targets):
             return targets
 
-        # resources = []
-        # if only_res.sum()==0:
-        #     # Proceed from the grid tip
-        #     for tri in range(1-size,size,1):
-        #         # k = -tri is diagonal bias
-        #         suggestion = np.triu(np.ones((size, size)), k=-tri)
-        #         # mirror
-        #         suggestion = np.fliplr(suggestion)
-        #         # builder_grid = grid * suggestion
-        #         # Counting EntityType.RESOURCE:8
-        #         # resources = np.where(builder_grid==8)
-        #         mask = available_grid == 8      # bool array, same shape as the grid
-        #         only_res = available_grid * mask  # zeros everywhere except the 8s
-        #         if only_res.sum():
-        #             break
-
-        # if only_res.sum()>0:
-        #     return targets
-        # find nearest
+        # Find nearest
         # Resource coordinates as an (R, 2) array
         res = np.argwhere(grid[0] == 8)   # shape (R, 2)
         if len(res):
@@ -317,9 +302,9 @@ class MyStrategy:
         if base is None:
             return
         unit_props = player_view.entity_properties[EntityType.RANGED_UNIT]
+        base_props = player_view.entity_properties[EntityType.RANGED_BASE]
         if resources >= unit_props.initial_cost + count_ranged and population_capacity>0:
-            # new_unit_spot = Vec2Int(base.position.x+4,base.position.y+5) # ToDo: Find empty
-            new_unit_spot = self.free_spots_around(base.position, unit_props.size, grid)
+            new_unit_spot = self.free_spots_around(base.position, base_props.size, grid)
             if len(new_unit_spot):
                 new_unit_spot = new_unit_spot[-1]
             else:
