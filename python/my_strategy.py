@@ -8,6 +8,7 @@ class MyStrategy:
     ranged_mask = None
     builders = []
     entity_map = None
+    house_mask_complete = False
 
     def log(self, text):
         if self.debug:
@@ -54,11 +55,21 @@ class MyStrategy:
 
         return grid
 
-    def init_placement(self, player_view):
-        if self.house_mask is None:
+    def init_placement(self, player_view, grid):
+        # if self.house_mask is None or self.house_mask_complete == False:
+        if not self.house_mask_complete:
             unit_size = player_view.entity_properties[EntityType.HOUSE].size
-            self.house_mask = np.zeros([player_view.map_size, player_view.map_size], dtype=np.int8)            
+            self.house_mask = np.zeros([player_view.map_size, player_view.map_size], dtype=np.int8)
             self.house_mask[unit_size:,unit_size:] = 1
+            # Don't build around corner until corner is not colonized
+            corner = grid[0][0:3,0:3]
+            corner_mask = np.argwhere(corner==8)
+            if corner_mask.sum()>0:
+                self.house_mask[0:3,0:6]=1
+                # self.house_mask[0:6,0:3]=1
+            else:
+                self.house_mask_complete = True
+            pass
         if self.ranged_mask is None:
             unit_size = player_view.entity_properties[EntityType.RANGED_BASE].size
             self.ranged_mask = np.zeros([player_view.map_size, player_view.map_size], dtype=np.int8)            
@@ -227,7 +238,7 @@ class MyStrategy:
         if len(build_order)==0 and len(repair_order)==0:
             return
         
-        if len(self.builders)<2:
+        if len(self.builders)<2: # TODO: Fix - Buggy with 3
             for b in builders:
                 self.builders.append(b)
         
@@ -358,8 +369,9 @@ class MyStrategy:
             result.entity_actions[unit.id] = EntityAction(move, None, attack, None)
 
     def get_action(self, player_view, debug_interface):
-        self.init_placement(player_view)
         self.debug = debug_interface  # None on the server and in batch mode: there is no viewer to draw in
+        grid = self.vectorized_map(player_view)
+        self.init_placement(player_view, grid)
         me = player_view.my_id
         mine = [e for e in player_view.entities if e.player_id == me]
         resources = next(p.resource for p in player_view.players if p.id == me)
@@ -383,7 +395,7 @@ class MyStrategy:
 
         result = Action({})
 
-        grid = self.vectorized_map(player_view)
+        
 
         self.miner_action(result, builders, grid)
         self.builder_action(result, mine, resources, builders, base, player_view, grid, population_capacity)
