@@ -122,12 +122,12 @@ class MyStrategy:
         if len(res):
             b_num = 0
             bpos = np.array([(b.position.x, b.position.y) for b in builders])   # shape (B, 2), int
-            # Broadcasting does the rest
             dist = np.abs(bpos[:, None, :] - res[None, :, :]).sum(axis=-1)   # shape (B, R)
             rows, cols = linear_sum_assignment(dist)   # dist: (B, R), works for any shape
-            # builder rows[k] gets resource res[cols[k]]; no resource is given out twice
+            target_of = dist.argmin(axis=1)
+            target_of[rows] = cols
             for b in builders:
-                targets[b.id] = res[cols[b_num]]
+                targets[b.id] = res[target_of[b_num]]
                 b_num += 1
         # No resources found. Send group diverse
         else:
@@ -287,9 +287,9 @@ class MyStrategy:
                 self.repair_action(entity, grid, builder, result, current_spot, player_view)
     
     def miner_action(self, result, builders, grid):
+        targets = self.builders_mine_strategy(grid, builders)
         for builder in builders:
             if builder not in self.builders:
-                targets = self.builders_mine_strategy(grid, builders)
                 if len(targets) and builder.id in targets.keys():
                     # step = targets[builder.id]
                     step = Vec2Int(*targets[builder.id])
@@ -335,18 +335,17 @@ class MyStrategy:
         enemy_units = np.argwhere((grid[0] != 8) & (grid[0] != 10) & (grid[1] != player_view.my_id) & (grid[1] != 0))
         if len(enemy_units):
             # ranged position
+            r_num = 0
             rpos = np.array([(r.position.x, r.position.y) for r in ranged_units])   # shape (B, 2), int
             dist = np.abs(rpos[:, None, :] - enemy_units[None, :, :]).sum(axis=-1)   # shape (B, R)
             rows, cols = linear_sum_assignment(dist)   # dist: (B, R), works for any shape
-            r_num = 0
+            target_of = dist.argmin(axis=1)
+            target_of[rows] = cols
             for unit in ranged_units:
-                # targets[b.id] = res[cols[b_num]]
-                target = enemy_units[cols[r_num]]
+                target = enemy_units[target_of[r_num]]
                 move = MoveAction(Vec2Int(target[0], target[1]), True, True)
                 result.entity_actions[unit.id] = EntityAction(move, None, attack, None)
                 r_num += 1
-                if r_num>=len(cols):
-                    r_num = 0
             return
 
         # Go to the base
