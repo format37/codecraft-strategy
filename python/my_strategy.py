@@ -1,5 +1,6 @@
 from model import *
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 class MyStrategy:
     # build_order = dict()
@@ -98,8 +99,8 @@ class MyStrategy:
         for r in res:
             x, y = r[0],r[1]
             available_l = x>0 and grid[0][x-1][y] in allowable_states       # Left
-            available_r = x<size and grid[0][x+1][y] in allowable_states    # Right            
-            available_t = y<size and grid[0][x][y+1] in allowable_states    # Top
+            available_r = x<size-1 and grid[0][x+1][y] in allowable_states    # Right            
+            available_t = y<size-1 and grid[0][x][y+1] in allowable_states    # Top
             available_b = y>0 and grid[0][x][y-1] in allowable_states        # Bottom
             if not available_l and not available_r and not available_t and not available_b:
                 mask[x][y] = 0
@@ -116,66 +117,34 @@ class MyStrategy:
         
         size = grid[0].shape[0]
 
-        # # Crop the top corner
-        # tri = 15
-        # suggestion = np.triu(np.ones((size, size)), k=size-tri)
-        # # mirror
-        # suggestion = np.fliplr(suggestion)
-        # available_grid = grid[0] * suggestion
-        # # Counting EntityType.RESOURCE:8
-        # # resources = np.where(available_grid==8)
-        # mask = available_grid == 8      # bool array, same shape as the grid
-        # ra_mask = self.resource_availability_mask(grid, suggestion)
-        # only_res = available_grid * mask * ra_mask # zeros everywhere except the 8s
-        # if only_res.sum()>0:
-        #     # find nearest
-        #     # Resource coordinates as an (R, 2) array
-        #     res = np.argwhere(available_grid == 8)   # shape (R, 2)
-        #     b_num = 0
-        #     for b in builders:
-        #         # Builder positions as a (B, 2) array
-        #         bpos = np.array([(b.position.x, b.position.y) for b in builders])   # shape (B, 2), int
-        #         # Broadcasting does the rest
-        #         dist = np.abs(bpos[:, None, :] - res[None, :, :]).sum(axis=-1)   # shape (B, R)
-        #         idx = dist.argmin(axis=1)   # shape (B,): nearest resource index for each builder
-        #         target = res[idx]          # shape (B, 2): coordinates of that resource
-        #         # targets[b.id] = Vec2Int(target[b_num][0], target[b_num][1])
-        #         targets[b.id] = (target[b_num][0], target[b_num][1])
-        #         b_num += 1
-        # if len(targets):
-        #     return targets
-
         # Find nearest
         # Resource coordinates as an (R, 2) array
-        # ra_mask = self.resource_availability_mask(grid, np.ones([size, size]))
         ra_mask = self.resource_availability_mask(grid)
         res = np.argwhere(grid[0]*ra_mask == 8)  # shape (R, 2)
-        # res = np.array(grid[0])
-        # res = np.argwhere(res == 8) # shape (R, 2)
         if len(res):
             b_num = 0
+            bpos = np.array([(b.position.x, b.position.y) for b in builders])   # shape (B, 2), int
+            # Broadcasting does the rest
+            dist = np.abs(bpos[:, None, :] - res[None, :, :]).sum(axis=-1)   # shape (B, R)
+            
+            # idx = dist.argmin(axis=1)   # shape (B,): nearest resource index for each builder
+            rows, cols = linear_sum_assignment(dist)   # dist: (B, R), works for any shape
+            # builder rows[k] gets resource res[cols[k]]; no resource is given out twice
+            
+            # target = res[idx]          # shape (B, 2): coordinates of that resource
             for b in builders:
-                # while b_num<len(builders):
-                # Builder positions as a (B, 2) array
-                bpos = np.array([(b.position.x, b.position.y) for b in builders])   # shape (B, 2), int
-                # Broadcasting does the rest
-                dist = np.abs(bpos[:, None, :] - res[None, :, :]).sum(axis=-1)   # shape (B, R)
-                # TODO: count only for single builder for performance purposes
-                idx = dist.argmin(axis=1)   # shape (B,): nearest resource index for each builder
-                target = res[idx]          # shape (B, 2): coordinates of that resource
-                # targets[b.id] = Vec2Int(target[b_num][0], target[b_num][1])
-                targets[b.id] = (target[b_num][0], target[b_num][1])
-                # res[targets[b.id]] = 0 # To not use the same res by more than 1 builder
-                res = res[~np.all(res == targets[b.id], axis=1)]
-                if len(res)==0:
-                    break
+                # targets[b.id] = (target[b_num][0], target[b_num][1])
+                # rows[builder_num]
+                targets[b.id] = res[cols[b_num]]
+                # res = res[~np.all(res == targets[b.id], axis=1)]
+                # if len(res)==0:
+                #     break
                 b_num += 1
         # No resources found. Send group diverse
         else:
             step = size // max(1, len(builders) // 2)
             aim_x, aim_y = 0, size
             for b in builders:
-                # targets[b.id] = Vec2Int(aim_x, aim_y)
                 targets[b.id] = (aim_x, aim_y)
                 aim_x += step
                 if aim_x>size:
