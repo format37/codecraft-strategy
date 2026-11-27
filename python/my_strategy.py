@@ -48,12 +48,71 @@ class MyStrategy:
                         self.entity_map[entity.entity_type]
                     grid[1, entity.position.x+x, entity.position.y+y] = \
                         0 if entity.entity_type==EntityType.RESOURCE else entity.player_id
-                    grid[2, entity.position.x+x, entity.position.y+y] = \
-                        player_view.entity_properties[entity.entity_type].sight_range
+                    # grid[2, entity.position.x+x, entity.position.y+y] = \
+                    #     player_view.entity_properties[entity.entity_type].sight_range
                     grid[3, entity.position.x+x, entity.position.y+y] = \
                         entity.id
 
         return grid
+
+    def diamond(self, r):
+        y, x = np.ogrid[-r:r+1, -r:r+1]
+        return (np.abs(x) + np.abs(y) <= r).astype(int)
+    
+    def stamp(self, grid, cy, cx, pat):
+        r = pat.shape[0] // 2
+        H, W = grid.shape
+        y0, y1 = max(cy - r, 0), min(cy + r + 1, H)
+        x0, x1 = max(cx - r, 0), min(cx + r + 1, W)
+        grid[y0:y1, x0:x1] += pat[y0-cy+r : y1-cy+r, x0-cx+r : x1-cx+r]
+
+    def remove_fog(self, grid, fog, entities, sight_range):
+        xs, ys = entities
+        for x, y in zip(xs, ys):
+            self.stamp(fog, x, y, self.diamond(sight_range))
+    
+    def fog_area(self, player_view, grid):
+        fog = np.zeros(grid[0].shape)
+        # Sight ranges
+        # 10: BUILDER_UNIT, RANGED_UNIT, MELEE_UNIT, TURRET
+        sight_range = 10
+        entities = np.where(
+            (
+                (grid[0] == self.entity_map[EntityType.BUILDER_UNIT]) | 
+                (grid[0] == self.entity_map[EntityType.RANGED_UNIT]) | 
+                (grid[0] == self.entity_map[EntityType.MELEE_UNIT]) | 
+                (grid[0] == self.entity_map[EntityType.TURRET])
+            ) & 
+            (grid[1] == player_view.my_id))
+        self.remove_fog(grid, fog, entities, sight_range)
+        # 5: BUILDER_BASE, RANGED_BASE, MELEE_BASE, HOUSE
+        sight_range = 5
+        entities = np.where(
+            (
+                (grid[0] == self.entity_map[EntityType.BUILDER_BASE]) | 
+                (grid[0] == self.entity_map[EntityType.RANGED_BASE]) | 
+                (grid[0] == self.entity_map[EntityType.MELEE_BASE]) | 
+                (grid[0] == self.entity_map[EntityType.HOUSE])
+            ) & 
+            (grid[1] == player_view.my_id))
+        self.remove_fog(grid, fog, entities, sight_range)
+        # 2: WALL
+        sight_range = 2
+        entities = np.where(
+            (
+                (grid[0] == self.entity_map[EntityType.BUILDER_BASE]) | 
+                (grid[0] == self.entity_map[EntityType.RANGED_BASE]) | 
+                (grid[0] == self.entity_map[EntityType.MELEE_BASE]) | 
+                (grid[0] == self.entity_map[EntityType.HOUSE])
+            ) & 
+            (grid[1] == player_view.my_id))
+        self.remove_fog(grid, fog, entities, sight_range)
+        # Make binary
+        fog = (fog > 0).astype(int)
+        # Invert
+        fog = 1 - fog
+        # Update
+        grid[2]=fog
 
     def init_placement(self, player_view, grid):
         # if self.house_mask is None or self.house_mask_complete == False:
@@ -83,7 +142,7 @@ class MyStrategy:
         available_grid = np.array(grid[0])
         side = available_grid.shape[0]
         if entity_type == EntityType.HOUSE:
-            available_grid += self.house_mask
+            available_grid += self.house_mask + grid[2]
             for x in range(0, side-size+1, size):
                 snippet = available_grid[x:x + size, 0]
                 if np.sum(snippet)==0:
@@ -231,7 +290,8 @@ class MyStrategy:
                 current_spot = 0
 
     def builder_action(self, result, mine, resources, builders, base, player_view, grid, population_capacity):
-        house = next((e for e in mine if e.entity_type == EntityType.HOUSE), None)
+        # house = next((e for e in mine if e.entity_type == EntityType.HOUSE), None)
+        # TODO: Don't build if no place in visible and available area
         repair_order = self.get_repair_order(player_view, grid, mine)
         build_order = self.get_build_order(resources, player_view, grid, repair_order, population_capacity)
         # TODO: Don't update builder until his current task is not finished
@@ -372,6 +432,7 @@ class MyStrategy:
         self.debug = debug_interface  # None on the server and in batch mode: there is no viewer to draw in
         grid = self.vectorized_map(player_view)
         self.init_placement(player_view, grid)
+        self.fog_area(player_view, grid)
         me = player_view.my_id
         mine = [e for e in player_view.entities if e.player_id == me]
         resources = next(p.resource for p in player_view.players if p.id == me)
